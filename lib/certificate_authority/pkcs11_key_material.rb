@@ -1,6 +1,7 @@
 module CertificateAuthority
   class Pkcs11KeyMaterial
     include KeyMaterial
+    include Validations
 
     attr_accessor :engine
     attr_accessor :token_id
@@ -37,6 +38,27 @@ module CertificateAuthority
     end
 
     private
+    def validate
+      validate_engine
+      validate_signature
+    end
+
+    def validate_signature
+      digest = OpenSSL::Digest::SHA256.new
+      content = "verification string"
+      sig = private_key.sign(digest, content)
+      verified = public_key.verify(digest, sig, content)
+      unless verified
+        errors.add :private_key, "cannot sign content"
+      end
+    end
+
+    def validate_engine
+      initialize_engine
+      unless engine
+        errors.add :engine, "failed to initialize"
+      end
+    end
 
     def initialize_engine
       ## We're going to return early and try again later if params weren't passed in
