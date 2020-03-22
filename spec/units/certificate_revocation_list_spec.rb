@@ -1,6 +1,6 @@
 describe CertificateAuthority::CertificateRevocationList do
   before(:each) do
-    @crl = CertificateAuthority::CertificateRevocationList.new
+    @crl = CertificateAuthority::CertificateRevocationList.new(crl_number: 1337)
 
     @root_certificate = CertificateAuthority::Certificate.new
     @root_certificate.signing_entity = true
@@ -17,20 +17,15 @@ describe CertificateAuthority::CertificateRevocationList do
     @certificate.sign!
 
     @serial_number = CertificateAuthority::SerialNumber.new
-    @serial_number.revoked_at = Time.now
+    @serial_number.revoke!('superseded', Time.now)
     @serial_number.number = 5
 
     @crl.parent = @root_certificate
-    @certificate.revoked_at = Time.now
+    @certificate.revoke!('keyCompromise', Time.now)
   end
 
   it "should accept a list of certificates" do
     @crl << @certificate
-  end
-
-  it "should complain if you add a certificate without a revocation time" do
-    @certificate.revoked_at = nil
-    expect{ @crl << @certificate}.to raise_error(RuntimeError)
   end
 
   it "should have a 'parent' that will be responsible for signing" do
@@ -49,7 +44,29 @@ describe CertificateAuthority::CertificateRevocationList do
     @crl.parent = @root_certificate
     @crl.sign!
     expect(@crl.to_pem).not_to be_nil
-    expect(OpenSSL::X509::CRL.new(@crl.to_pem)).not_to be_nil
+    x509crl = OpenSSL::X509::CRL.new(@crl.to_pem)
+    expect(x509crl).not_to be_nil
+    expect(x509crl.extensions.size).to eq(1), "found no x509v3 extensions!?"
+    expect(x509crl.extensions[0].oid).to eq "crlNumber"
+    expect(x509crl.extensions[0].value).to eq "1337"
+    expect(x509crl.revoked.size).to eq(1), "no revoked certs found"
+    expect(x509crl.revoked[0].extensions.size).to eq(1), "no revokation extension found"
+    expect(x509crl.revoked[0].extensions[0].oid).to eq("CRLReason")
+    expect(x509crl.revoked[0].extensions[0].value).to match(/(keyCompromise|Key Compromise)/)
+  end
+
+  it "should not include CRLReason for an unspecified reason code" do
+    @certificate.revoke!('unspecified')
+    expect(@certificate.revokation_reason).to eq('unspecified')
+    @crl << @certificate
+    expect {@crl.to_pem}.to raise_error(RuntimeError)
+    @crl.parent = @root_certificate
+    @crl.sign!
+    expect(@crl.to_pem).not_to be_nil
+    x509crl = OpenSSL::X509::CRL.new(@crl.to_pem)
+    expect(x509crl).not_to be_nil
+    expect(x509crl.extensions.size).to eq(1), "found no x509v3 extensions!?"
+    expect(x509crl.revoked[0].extensions.size).to eq(0), "revokation extension found for unspecifed reason code"
   end
 
   it "should be able to mix Certificates and SerialNumbers for convenience" do

@@ -7,16 +7,18 @@ module CertificateAuthority
     attr_accessor :crl_body
     attr_accessor :next_update
     attr_accessor :last_update_skew_seconds
+    attr_accessor :crl_number
 
     def validate
       errors.add :next_update, "Next update must be a positive value" if self.next_update < 0
       errors.add :parent, "A parent entity must be set" if self.parent.nil?
     end
 
-    def initialize
+    def initialize(crl_number: 1)
       self.certificates = []
       self.next_update = 60 * 60 * 4 # 4 hour default
       self.last_update_skew_seconds = 0
+      self.crl_number = crl_number
     end
 
     def <<(revocable)
@@ -46,11 +48,21 @@ module CertificateAuthority
         when SerialNumber
           revocation.serial = revocable.number
         end
+        if revocable.add_crl_reason?
+          revocation.add_extension(
+            OpenSSL::X509::Extension.new("CRLReason",
+            OpenSSL::ASN1::Enumerated(revocable.revokation_reason_code))
+          )
+        end
         revocation.time = revocable.revoked_at
         revocation
       end
 
       crl = OpenSSL::X509::CRL.new
+      crl.add_extension(
+        OpenSSL::X509::Extension.new("crlNumber",
+        OpenSSL::ASN1::Integer(crl_number))
+      )
       revocations.each do |revocation|
         crl.add_revoked(revocation)
       end

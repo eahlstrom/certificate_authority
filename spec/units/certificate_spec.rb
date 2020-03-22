@@ -502,10 +502,14 @@ CERT
     expect(@certificate.not_after).to be > Time.now + year - day
   end
 
-  it "should be able to have a revoked at time" do
+  it "should have a revokation time and reason" do
     expect(@certificate.revoked?).to be_falsey
-    @certificate.revoked_at = Time.now.utc
+    expect(@certificate.revokation_reason).to be_nil
+    expect(@certificate.revokation_reason_code).to be_nil
+    @certificate.revoke! 'cessationOfOperation', Time.now.utc
     expect(@certificate.revoked?).to be_truthy
+    expect(@certificate.revokation_reason).to eq('cessationOfOperation')
+    expect(@certificate.revokation_reason_code).to eq(CertificateAuthority::Revocable::CrlReason::CRL_REASONS['cessationOfOperation'])
   end
 
 end
