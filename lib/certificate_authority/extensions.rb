@@ -463,8 +463,8 @@ module CertificateAuthority
           c = v.split(':', 2)
           obj.uris << c.last if c.first == "URI"
           obj.dns_names << c.last if c.first == "DNS"
-          obj.ips << c.last if c.first == "IP"
-          obj.emails << c.last if c.first == "EMAIL"
+          obj.ips << c.last if c.first =~ /\A(IP|IP Address)\z/
+          obj.emails << c.last if c.first.upcase == "EMAIL"
         end
         obj
       end

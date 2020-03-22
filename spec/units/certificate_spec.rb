@@ -48,6 +48,27 @@ describe CertificateAuthority::Certificate do
         cert = OpenSSL::X509::Certificate.new(@certificate.to_pem)
         expect(cert.extensions.map{|i| [i.oid,i.value] }.select{|i| i.first == "basicConstraints"}.first[1]).to eq("CA:TRUE")
       end
+
+      it "should obey its signing profile" do
+        @certificate.serial_number.number = 1
+        @certificate.subject.common_name = "chrischandler.name"
+        @certificate.key_material.generate_key(768)
+        @certificate.sign!(
+          "digest" => "MD5",
+          "extensions" => {
+            "basicConstraints" => {"ca" => false},
+            "keyUsage" => {"usage" => []},
+            "extendedKeyUsage" => {"usage" => []},
+            "subjectAltName" => {"dns_names" => ["test1.example.com", "test2"]},
+          },
+        )
+        cert = OpenSSL::X509::Certificate.new(@certificate.to_pem)
+        cert_exts = cert.extensions.inject(Hash.new){|hsh, ext| hsh.merge!(ext.oid => ext.value)}
+        #pp cert_exts
+        expect(cert.signature_algorithm).to eq("md5WithRSAEncryption")
+        expect(cert_exts['basicConstraints']).to eq("CA:FALSE")
+        expect(cert_exts['extendedKeyUsage']).to be_nil
+      end
     end
 
     describe "Intermediate certificates" do

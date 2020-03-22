@@ -164,4 +164,74 @@ EOF
       @csr.to_cert.extensions["subjectAltName"] == expected_subjectAlt
     end
   end
+
+  describe "copy extensions" do
+    before(:each) do
+      @csr =<<~EOF
+        -----BEGIN CERTIFICATE REQUEST-----
+        MIIBeTCCAQMCAQAwDzENMAsGA1UEAwwEVEVTVDB8MA0GCSqGSIb3DQEBAQUAA2sA
+        MGgCYQDLLOE5I0pbgqfsIny+d+DOwEV3Pbrb3S2BAt9yrp3mrVKmoFDe5v7v0Ahd
+        4vaYAJgoe0Xc+O8cBWXBui2FWaGp/89kKYVla7+23LtLVGVX/FpFa9rNDA4EaEZJ
+        JTPSf2kCAwEAAaBvMG0GCSqGSIb3DQEJDjFgMF4wDAYDVR0TBAUwAwEB/zBOBgNV
+        HREERzBFghB0ZXN0LmV4YW1wbGUuY29tggR0ZXN0hwTAqAcBgRB0ZXN0QGV4YW1w
+        bGUuY29thhNodHRwOi8vbXkudXJsLmhlcmUvMA0GCSqGSIb3DQEBCwUAA2EAHCwh
+        LIBbttnHmBr16/YSwmdO/EAL44SDPiuy4Ca4wHXFkZc/8cci+yCGDLmqZDUO2/Lp
+        l8mJPWFWx8ZbCVZeRcQBnREKVx4lHkqCHyalOFwl3B7fFDXGSMPMHtGS7nB0
+        -----END CERTIFICATE REQUEST-----
+      EOF
+    end
+
+    it "should not copy extensions by default" do
+      csr = CertificateAuthority::SigningRequest.from_x509_csr(@csr)
+      cert = csr.to_cert
+      ext_ca = cert.extensions['basicConstraints'].ca
+      ext_san = cert.extensions['subjectAltName']
+      expect(ext_ca).to be_falsey
+      expect(ext_san.dns_names).to be_empty
+    end
+
+    it "should copy CA extension when in allowed_copy_extensions" do
+      csr = CertificateAuthority::SigningRequest.from_x509_csr(@csr)
+      csr.allowed_copy_extensions = { 'basicConstraints' => 'CA' }
+      cert = csr.to_cert
+      ext_ca = cert.extensions['basicConstraints'].ca
+      expect(ext_ca).to be_truthy
+    end
+
+    it "should not copy CA extension when not in allowed_copy_extensions" do
+      csr = CertificateAuthority::SigningRequest.from_x509_csr(@csr)
+      csr.allowed_copy_extensions = {}
+      cert = csr.to_cert
+      ext_ca = cert.extensions['basicConstraints'].ca
+      expect(ext_ca).to be_falsey
+    end
+
+    it "should copy subjectAltName extensions when told so" do
+      csr = CertificateAuthority::SigningRequest.from_x509_csr(@csr)
+      csr.allowed_copy_extensions = {
+        'subjectAltName' => ['DNS', 'IP Address', 'URI', 'email']
+      }
+      cert = csr.to_cert
+      ext_san = cert.extensions['subjectAltName']
+      expect(ext_san.dns_names).to eq %w{test.example.com test}
+      expect(ext_san.uris).to eq %w{http://my.url.here/}
+      expect(ext_san.ips).to eq %w{192.168.7.1}
+      expect(ext_san.emails).to eq %w{test@example.com}
+    end
+
+    it "should copy part of subjectAltName extensions when told so" do
+      csr = CertificateAuthority::SigningRequest.from_x509_csr(@csr)
+      csr.allowed_copy_extensions = {
+        'subjectAltName' => ['DNS', 'URI' ]
+      }
+      cert = csr.to_cert
+      ext_san = cert.extensions['subjectAltName']
+      expect(ext_san.dns_names).to eq %w{test.example.com test}
+      expect(ext_san.uris).to eq %w{http://my.url.here/}
+      expect(ext_san.ips).to be_empty
+      expect(ext_san.emails).to be_empty
+    end
+
+  end
+
 end

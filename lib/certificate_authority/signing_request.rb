@@ -6,9 +6,11 @@ module CertificateAuthority
     attr_accessor :openssl_csr
     attr_accessor :digest
     attr_accessor :attributes
+    attr_accessor :allowed_copy_extensions
 
     def initialize()
       @attributes = []
+      @allowed_copy_extensions = {}
     end
 
     # Fake attribute for convenience because adding
@@ -35,11 +37,20 @@ module CertificateAuthority
         cert.distinguished_name = @distinguished_name
       end
       cert.key_material = @key_material
+      unless allowed_copy_extensions.empty?
+        cert = copy_request_extensions(cert)
+      end
+      cert
+    end
+
+    def copy_request_extensions(cert)
       if attribute = read_attributes_by_oid('extReq', 'msExtReq')
         set = OpenSSL::ASN1.decode(attribute.value)
         seq = set.value.first
         seq.value.collect { |asn1ext| OpenSSL::X509::Extension.new(asn1ext).to_a }.each do |o, v, c|
-         Certificate::EXTENSIONS.each do |klass|
+          v = fetch_allowed_extension_values(o, v, c)
+          next if v.empty?
+          Certificate::EXTENSIONS.each do |klass|
             cert.extensions[klass::OPENSSL_IDENTIFIER] = klass.parse(v, c) if v && klass::OPENSSL_IDENTIFIER == o
           end
         end
@@ -87,5 +98,20 @@ module CertificateAuthority
       key_material.public_key = openssl_spkac.public_key
       csr
     end
+
+    private
+    def fetch_allowed_extension_values(oid, val, crit)
+      allowed_values = []
+      if allowed_copy_extensions.has_key?(oid)
+        val.split(",").collect(&:strip).each do |value_def|
+          (value_name, value_val) = value_def.split(":", 2)
+          if allowed_copy_extensions[oid].include?(value_name)
+            allowed_values << value_def
+          end
+        end
+      end
+      return allowed_values.join(',')
+    end
+
   end
 end
